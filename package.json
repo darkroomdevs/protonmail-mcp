@@ -1,5 +1,5 @@
 {
-  "name": "protonmail-mcp",
+  "name": "@darkroomhq/protonmail-mcp",
   "version": "1.0.0",
   "description": "MCP server for ProtonMail via Proton Bridge (SMTP + IMAP)",
   "type": "module",
@@ -7,6 +7,7 @@
   "keywords": ["mcp", "protonmail", "email", "proton-bridge", "imap", "smtp"],
   "engines": { "node": ">=18.0.0" },
   "files": ["build/", "README.md", "LICENSE"],
+  "publishConfig": { "access": "public" },
   "bin": { "protonmail-mcp": "./build/index.js" },
   "scripts": {
     "build": "tsc && chmod 755 build/index.js",

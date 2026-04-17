@@ -10,9 +10,9 @@ MCP server for ProtonMail via Proton Bridge (SMTP + IMAP).
 ## Installation
 
 ```bash
-npm install -g protonmail-mcp
+npm install -g @darkroomhq/protonmail-mcp
 # or run without installing
-npx protonmail-mcp
+npx @darkroomhq/protonmail-mcp
 ```
 
 ## Configuration
@@ -23,7 +23,7 @@ Add to your AI client config:
 {
   "mcpServers": {
     "protonmail": {
-      "command": "protonmail-mcp",
+      "command": "@darkroomhq/protonmail-mcp",
       "env": {
         "BRIDGE_HOST": "127.0.0.1",
         "BRIDGE_IMAP_PORT": "1143",
@@ -43,7 +43,7 @@ Or with `npx` (no install needed):
   "mcpServers": {
     "protonmail": {
       "command": "npx",
-      "args": ["protonmail-mcp"],
+      "args": ["@darkroomhq/protonmail-mcp"],
       "env": {
         "BRIDGE_HOST": "127.0.0.1",
         "BRIDGE_IMAP_PORT": "1143",
