@@ -20,24 +20,14 @@ export async function handleConnectionStatus(
   const imapConnected =
     imapResult.status === "fulfilled" ? imapResult.value : false;
 
-  const status = {
-    smtp: {
-      connected: smtpConnected,
-      error:
-        smtpResult.status === "rejected"
-          ? String(smtpResult.reason)
-          : undefined,
-    },
-    imap: {
-      connected: imapConnected,
-      error:
-        imapResult.status === "rejected"
-          ? String(imapResult.reason)
-          : undefined,
-    },
-  };
+  const smtpLine = smtpConnected
+    ? "SMTP: connected"
+    : `SMTP: disconnected${smtpResult.status === "rejected" ? ` (${smtpResult.reason})` : ""}`;
+  const imapLine = imapConnected
+    ? "IMAP: connected"
+    : `IMAP: disconnected${imapResult.status === "rejected" ? ` (${imapResult.reason})` : ""}`;
 
   return {
-    content: [{ type: "text", text: JSON.stringify(status) }],
+    content: [{ type: "text", text: `${smtpLine}\n${imapLine}` }],
   };
 }

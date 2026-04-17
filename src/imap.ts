@@ -45,6 +45,10 @@ export class ImapClient {
   private config: ServerConfig["imap"];
   private client: ImapFlow | null = null;
   private connectingPromise: Promise<ImapFlow> | null = null;
+  private mailboxCache: { data: MailboxInfo[]; expiry: number } | null = null;
+  private trashFolderPath: string | null = null;
+
+  private static MAILBOX_CACHE_TTL = 30_000;
 
   constructor(config: ServerConfig["imap"]) {
     this.config = config;
@@ -77,9 +81,27 @@ export class ImapClient {
       logger: false,
     });
 
+    client.on("close", () => { this.client = null; });
+    client.on("error", () => { this.client = null; });
+
     await client.connect();
     this.client = client;
     return client;
+  }
+
+  private mapEnvelope(message: { uid: number; envelope?: any; flags?: Set<string>; size?: number }): EmailEnvelope {
+    const envelope = message.envelope;
+    return {
+      uid: message.uid,
+      messageId: envelope?.messageId ?? "",
+      date: envelope?.date ?? new Date(),
+      from: mapAddresses(envelope?.from as ImapAddress[] | undefined),
+      to: mapAddresses(envelope?.to as ImapAddress[] | undefined),
+      cc: mapAddresses(envelope?.cc as ImapAddress[] | undefined),
+      subject: envelope?.subject ?? "",
+      flags: flagsToArray(message.flags),
+      size: message.size,
+    };
   }
 
   async disconnect(): Promise<void> {
@@ -103,6 +125,10 @@ export class ImapClient {
   }
 
   async listMailboxes(): Promise<MailboxInfo[]> {
+    if (this.mailboxCache && Date.now() < this.mailboxCache.expiry) {
+      return this.mailboxCache.data;
+    }
+
     const client = await this.ensureConnected();
     const mailboxes = await client.list();
     const results: MailboxInfo[] = [];
@@ -132,14 +158,15 @@ export class ImapClient {
       }
     }
 
+    this.mailboxCache = { data: results, expiry: Date.now() + ImapClient.MAILBOX_CACHE_TTL };
     return results;
   }
 
   async listEmails(
     folder: string,
-    page: number,
-    pageSize: number
-  ): Promise<{ emails: EmailEnvelope[]; total: number }> {
+    pageSize: number,
+    options?: { page?: number; beforeUid?: number }
+  ): Promise<{ emails: EmailEnvelope[]; total: number; nextCursor: number | null }> {
     validateFolder(folder);
     const client = await this.ensureConnected();
     const lock = await client.getMailboxLock(folder);
@@ -149,52 +176,106 @@ export class ImapClient {
       const total = status.messages ?? 0;
 
       if (total === 0) {
-        return { emails: [], total: 0 };
+        return { emails: [], total: 0, nextCursor: null };
       }
 
-      const start = Math.max(1, total - page * pageSize + 1);
-      const end = total - (page - 1) * pageSize;
-
-      if (start > end || end < 1) {
-        return { emails: [], total };
+      if (options?.beforeUid !== undefined) {
+        return this.listEmailsByCursor(client, folder, pageSize, total, options.beforeUid);
       }
 
-      const emails: EmailEnvelope[] = [];
-
-      for await (const message of client.fetch(`${start}:${end}`, {
-        uid: true,
-        flags: true,
-        envelope: true,
-        size: true,
-      })) {
-        const envelope = message.envelope;
-        emails.push({
-          uid: message.uid,
-          messageId: envelope?.messageId ?? "",
-          date: envelope?.date ?? new Date(),
-          from: mapAddresses(envelope?.from as ImapAddress[] | undefined),
-          to: mapAddresses(envelope?.to as ImapAddress[] | undefined),
-          cc: mapAddresses(envelope?.cc as ImapAddress[] | undefined),
-          subject: envelope?.subject ?? "",
-          flags: flagsToArray(message.flags),
-          size: message.size,
-        });
-      }
-
-      // newest first
-      emails.reverse();
-      return { emails, total };
+      const page = options?.page ?? 1;
+      return this.listEmailsByPage(client, folder, pageSize, total, page);
     } finally {
       lock.release();
     }
   }
 
-  async readEmail(folder: string, uid: number): Promise<EmailFull> {
+  private async listEmailsByPage(
+    client: ImapFlow,
+    folder: string,
+    pageSize: number,
+    total: number,
+    page: number
+  ): Promise<{ emails: EmailEnvelope[]; total: number; nextCursor: number | null }> {
+    const searchResult = await client.search({}, { uid: true });
+    const allUids: number[] = searchResult === false ? [] : searchResult;
+
+    if (allUids.length === 0) {
+      return { emails: [], total, nextCursor: null };
+    }
+
+    const offset = (page - 1) * pageSize;
+    const selected = allUids.slice(-(offset + pageSize), allUids.length - offset || undefined);
+
+    if (selected.length === 0) {
+      return { emails: [], total, nextCursor: null };
+    }
+
+    const emails: EmailEnvelope[] = [];
+    for await (const message of client.fetch(selected.join(","), {
+      uid: true, flags: true, envelope: true, size: true,
+    }, { uid: true })) {
+      emails.push(this.mapEnvelope(message));
+    }
+
+    emails.reverse();
+    const nextCursor = emails.length > 0 ? Math.min(...emails.map((e) => e.uid)) : null;
+    return { emails, total, nextCursor };
+  }
+
+  private async listEmailsByCursor(
+    client: ImapFlow,
+    folder: string,
+    pageSize: number,
+    total: number,
+    beforeUid: number
+  ): Promise<{ emails: EmailEnvelope[]; total: number; nextCursor: number | null }> {
+    const searchResult = await client.search({ uid: `1:${beforeUid - 1}` }, { uid: true });
+    const uids: number[] = searchResult === false ? [] : searchResult;
+
+    if (uids.length === 0) {
+      return { emails: [], total, nextCursor: null };
+    }
+
+    const selected = uids.slice(-pageSize);
+    const emails: EmailEnvelope[] = [];
+    for await (const message of client.fetch(selected.join(","), {
+      uid: true, flags: true, envelope: true, size: true,
+    }, { uid: true })) {
+      emails.push(this.mapEnvelope(message));
+    }
+
+    emails.reverse();
+    const nextCursor = emails.length > 0 ? Math.min(...emails.map((e) => e.uid)) : null;
+    return { emails, total, nextCursor };
+  }
+
+  async readEmail(folder: string, uid: number, headersOnly = false): Promise<EmailFull> {
     validateFolder(folder);
     const client = await this.ensureConnected();
     const lock = await client.getMailboxLock(folder);
 
     try {
+      if (headersOnly) {
+        const message = await client.fetchOne(
+          `${uid}`,
+          { uid: true, flags: true, envelope: true, size: true },
+          { uid: true }
+        );
+        if (!message) throw new Error(`Message UID ${uid} not found in ${folder}`);
+        const base = this.mapEnvelope(message);
+        return {
+          ...base,
+          bcc: [],
+          replyTo: [],
+          inReplyTo: null,
+          references: [],
+          text: null,
+          html: null,
+          attachments: [],
+        };
+      }
+
       const message = await client.fetchOne(
         `${uid}`,
         { source: true, uid: true, flags: true, envelope: true },
@@ -278,58 +359,58 @@ export class ImapClient {
     }
   }
 
+  private buildSearchQuery(criteria: SearchCriteria): Record<string, unknown> {
+    const query: Record<string, unknown> = {};
+    if (criteria.from) query["from"] = criteria.from;
+    if (criteria.to) query["to"] = criteria.to;
+    if (criteria.subject) query["subject"] = criteria.subject;
+    if (criteria.body) query["body"] = criteria.body;
+    if (criteria.since) query["since"] = parseSearchDate(criteria.since, "since");
+    if (criteria.before) query["before"] = parseSearchDate(criteria.before, "before");
+    if (criteria.seen === true) query["seen"] = true;
+    if (criteria.seen === false) query["unseen"] = true;
+    if (criteria.flagged === true) query["flagged"] = true;
+    if (criteria.flagged === false) query["unflagged"] = true;
+    return query;
+  }
+
   async searchEmails(
     folder: string,
     criteria: SearchCriteria,
-    limit = 100
-  ): Promise<EmailEnvelope[]> {
+    pageSize = 50,
+    beforeUid?: number
+  ): Promise<{ emails: EmailEnvelope[]; totalMatches: number; nextCursor: number | null }> {
     validateFolder(folder);
     const client = await this.ensureConnected();
     const lock = await client.getMailboxLock(folder);
 
     try {
-      const searchQuery: Record<string, unknown> = {};
-
-      if (criteria.from) searchQuery["from"] = criteria.from;
-      if (criteria.to) searchQuery["to"] = criteria.to;
-      if (criteria.subject) searchQuery["subject"] = criteria.subject;
-      if (criteria.body) searchQuery["body"] = criteria.body;
-      if (criteria.since) searchQuery["since"] = parseSearchDate(criteria.since, "since");
-      if (criteria.before) searchQuery["before"] = parseSearchDate(criteria.before, "before");
-      if (criteria.seen === true) searchQuery["seen"] = true;
-      if (criteria.seen === false) searchQuery["unseen"] = true;
-      if (criteria.flagged === true) searchQuery["flagged"] = true;
-      if (criteria.flagged === false) searchQuery["unflagged"] = true;
-
+      const searchQuery = this.buildSearchQuery(criteria);
       const searchResult = await client.search(searchQuery, { uid: true });
-      const uids: number[] = searchResult === false ? [] : searchResult;
-      const limited = uids.slice(-limit);
+      const allUids: number[] = searchResult === false ? [] : searchResult;
+      const totalMatches = allUids.length;
 
-      if (limited.length === 0) return [];
+      const filtered = beforeUid !== undefined
+        ? allUids.filter((uid) => uid < beforeUid)
+        : allUids;
+      const selected = filtered.slice(-pageSize);
+
+      if (selected.length === 0) {
+        return { emails: [], totalMatches, nextCursor: null };
+      }
 
       const emails: EmailEnvelope[] = [];
-
       for await (const message of client.fetch(
-        limited.join(","),
+        selected.join(","),
         { uid: true, flags: true, envelope: true, size: true },
         { uid: true }
       )) {
-        const envelope = message.envelope;
-        emails.push({
-          uid: message.uid,
-          messageId: envelope?.messageId ?? "",
-          date: envelope?.date ?? new Date(),
-          from: mapAddresses(envelope?.from as ImapAddress[] | undefined),
-          to: mapAddresses(envelope?.to as ImapAddress[] | undefined),
-          cc: mapAddresses(envelope?.cc as ImapAddress[] | undefined),
-          subject: envelope?.subject ?? "",
-          flags: flagsToArray(message.flags),
-          size: message.size,
-        });
+        emails.push(this.mapEnvelope(message));
       }
 
       emails.reverse();
-      return emails;
+      const nextCursor = emails.length > 0 ? Math.min(...emails.map((e) => e.uid)) : null;
+      return { emails, totalMatches, nextCursor };
     } finally {
       lock.release();
     }
@@ -357,9 +438,96 @@ export class ImapClient {
   }
 
   async resolveTrashFolder(): Promise<string> {
+    if (this.trashFolderPath) return this.trashFolderPath;
     const mailboxes = await this.listMailboxes();
     const trash = mailboxes.find((m) => m.specialUse === "\\Trash");
-    return trash?.path ?? "Trash";
+    this.trashFolderPath = trash?.path ?? "Trash";
+    return this.trashFolderPath;
+  }
+
+  async createMailbox(path: string): Promise<void> {
+    validateFolder(path);
+    const client = await this.ensureConnected();
+    await client.mailboxCreate(path);
+  }
+
+  async deleteMailbox(path: string): Promise<void> {
+    validateFolder(path);
+    const client = await this.ensureConnected();
+    await client.mailboxDelete(path);
+  }
+
+  async renameMailbox(oldPath: string, newPath: string): Promise<void> {
+    validateFolder(oldPath);
+    validateFolder(newPath);
+    const client = await this.ensureConnected();
+    await client.mailboxRename(oldPath, newPath);
+  }
+
+  async searchByQuery(folder: string, criteria: SearchCriteria): Promise<number[]> {
+    validateFolder(folder);
+    const client = await this.ensureConnected();
+    const lock = await client.getMailboxLock(folder);
+    try {
+      const query = this.buildSearchQuery(criteria);
+      const result = await client.search(query, { uid: true });
+      return result === false ? [] : result;
+    } finally {
+      lock.release();
+    }
+  }
+
+  async bulkAction(
+    folder: string,
+    action: "delete" | "move" | "markRead" | "markUnread" | "flag" | "unflag",
+    uids: number[],
+    options?: { destination?: string; dryRun?: boolean }
+  ): Promise<{ affected: number; uids: number[] }> {
+    validateFolder(folder);
+    const dryRun = options?.dryRun ?? true;
+
+    if (dryRun) {
+      return { affected: uids.length, uids };
+    }
+
+    if (uids.length === 0) {
+      return { affected: 0, uids: [] };
+    }
+
+    const client = await this.ensureConnected();
+    const lock = await client.getMailboxLock(folder);
+    const uidSet = uids.join(",");
+
+    try {
+      switch (action) {
+        case "delete": {
+          const trashFolder = await this.resolveTrashFolder();
+          await client.messageMove(uidSet, trashFolder, { uid: true });
+          break;
+        }
+        case "move":
+          if (!options?.destination) throw new Error("destination required for move action");
+          validateFolder(options.destination);
+          await client.messageMove(uidSet, options.destination, { uid: true });
+          break;
+        case "markRead":
+          await client.messageFlagsAdd(uidSet, ["\\Seen"], { uid: true });
+          break;
+        case "markUnread":
+          await client.messageFlagsRemove(uidSet, ["\\Seen"], { uid: true });
+          break;
+        case "flag":
+          await client.messageFlagsAdd(uidSet, ["\\Flagged"], { uid: true });
+          break;
+        case "unflag":
+          await client.messageFlagsRemove(uidSet, ["\\Flagged"], { uid: true });
+          break;
+      }
+    } finally {
+      lock.release();
+    }
+
+    return { affected: uids.length, uids };
   }
 
   async moveMessage(

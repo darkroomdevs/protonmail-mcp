@@ -11,10 +11,15 @@ export async function handleSendEmail(
   smtp: SmtpClient,
   params: SendEmailParams
 ): Promise<ToolResult> {
+  if (!params.text && !params.html) {
+    return { content: [{ type: "text", text: "Either text or html body is required" }], isError: true };
+  }
   try {
     const result: SendResult = await smtp.send(params);
+    const accepted = result.accepted.length > 0 ? `Delivered to: ${result.accepted.join(", ")}` : "";
+    const rejected = result.rejected.length > 0 ? `\nRejected: ${result.rejected.join(", ")}` : "";
     return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
+      content: [{ type: "text", text: `Email sent (${result.messageId})\n${accepted}${rejected}`.trim() }],
     };
   } catch (error) {
     return {
@@ -36,6 +41,9 @@ export async function handleReplyEmail(
     bcc?: string[];
   }
 ): Promise<ToolResult> {
+  if (!params.text && !params.html) {
+    return { content: [{ type: "text", text: "Either text or html body is required" }], isError: true };
+  }
   if (!(await imap.isAvailable())) {
     return {
       content: [{ type: "text", text: "IMAP unavailable — Proton Bridge may not be running. Use sendEmail with manual headers instead." }],
@@ -69,8 +77,10 @@ export async function handleReplyEmail(
     };
 
     const result = await smtp.send(sendParams);
+    const accepted = result.accepted.length > 0 ? `Delivered to: ${result.accepted.join(", ")}` : "";
+    const rejected = result.rejected.length > 0 ? `\nRejected: ${result.rejected.join(", ")}` : "";
     return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
+      content: [{ type: "text", text: `Reply sent (${result.messageId})\n${accepted}${rejected}`.trim() }],
     };
   } catch (error) {
     return {

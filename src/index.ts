@@ -17,6 +17,13 @@ import {
   unflagEmailTool,
   moveEmailTool,
   deleteEmailTool,
+  bulkActionTool,
+  createFolderTool,
+  deleteFolderTool,
+  renameFolderTool,
+  createLabelTool,
+  deleteLabelTool,
+  renameLabelTool,
   connectionStatusTool,
 } from "./tools/definitions.js";
 import { handleSendEmail, handleReplyEmail } from "./tools/send.js";
@@ -33,6 +40,13 @@ import {
   handleUnflagEmail,
   handleMoveEmail,
   handleDeleteEmail,
+  handleBulkAction,
+  handleCreateFolder,
+  handleDeleteFolder,
+  handleRenameFolder,
+  handleCreateLabel,
+  handleDeleteLabel,
+  handleRenameLabel,
 } from "./tools/actions.js";
 import { handleConnectionStatus } from "./tools/system.js";
 
@@ -190,6 +204,83 @@ server.registerTool(
   },
   async (params) =>
     handleDeleteEmail(imap, params as Parameters<typeof handleDeleteEmail>[1])
+);
+
+server.registerTool(
+  bulkActionTool.name,
+  {
+    description: bulkActionTool.description,
+    inputSchema: bulkActionTool.schema,
+    annotations: bulkActionTool.annotations,
+  },
+  async (params) =>
+    handleBulkAction(imap, params as Parameters<typeof handleBulkAction>[1])
+);
+
+server.registerTool(
+  createFolderTool.name,
+  {
+    description: createFolderTool.description,
+    inputSchema: createFolderTool.schema,
+    annotations: createFolderTool.annotations,
+  },
+  async (params) =>
+    handleCreateFolder(imap, params as Parameters<typeof handleCreateFolder>[1])
+);
+
+server.registerTool(
+  deleteFolderTool.name,
+  {
+    description: deleteFolderTool.description,
+    inputSchema: deleteFolderTool.schema,
+    annotations: deleteFolderTool.annotations,
+  },
+  async (params) =>
+    handleDeleteFolder(imap, params as Parameters<typeof handleDeleteFolder>[1])
+);
+
+server.registerTool(
+  renameFolderTool.name,
+  {
+    description: renameFolderTool.description,
+    inputSchema: renameFolderTool.schema,
+    annotations: renameFolderTool.annotations,
+  },
+  async (params) =>
+    handleRenameFolder(imap, params as Parameters<typeof handleRenameFolder>[1])
+);
+
+server.registerTool(
+  createLabelTool.name,
+  {
+    description: createLabelTool.description,
+    inputSchema: createLabelTool.schema,
+    annotations: createLabelTool.annotations,
+  },
+  async (params) =>
+    handleCreateLabel(imap, params as Parameters<typeof handleCreateLabel>[1])
+);
+
+server.registerTool(
+  deleteLabelTool.name,
+  {
+    description: deleteLabelTool.description,
+    inputSchema: deleteLabelTool.schema,
+    annotations: deleteLabelTool.annotations,
+  },
+  async (params) =>
+    handleDeleteLabel(imap, params as Parameters<typeof handleDeleteLabel>[1])
+);
+
+server.registerTool(
+  renameLabelTool.name,
+  {
+    description: renameLabelTool.description,
+    inputSchema: renameLabelTool.schema,
+    annotations: renameLabelTool.annotations,
+  },
+  async (params) =>
+    handleRenameLabel(imap, params as Parameters<typeof handleRenameLabel>[1])
 );
 
 server.registerTool(
