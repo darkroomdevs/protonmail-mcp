@@ -59,7 +59,7 @@ With `npx` (no global install needed):
 ### All environment variables
 
 | Variable | Required | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `PROTONMAIL_USERNAME` | Yes | — | Your ProtonMail email address |
 | `PROTONMAIL_PASSWORD` | Yes | — | Proton Bridge app password |
 | `SMTP_HOST` | No | `127.0.0.1` | Bridge SMTP host |
@@ -71,7 +71,7 @@ With `npx` (no global install needed):
 ## Tools
 
 | Tool | Description |
-|---|---|
+| --- | --- |
 | `sendEmail` | Send an email with optional CC, BCC, HTML body, attachments, and priority |
 | `replyEmail` | Reply to an existing email by UID |
 | `listFolders` | List all mailboxes and folders |
@@ -88,30 +88,30 @@ With `npx` (no global install needed):
 
 ## Example prompts
 
-**Read & summarize**
-> "Summarize my unread emails from this week."
+### Read & summarize
 
-> "Read the latest email from alice@example.com and tell me what she's asking for."
+- "Summarize my unread emails from this week."
+- "Read the latest email from alice and tell me what she's asking for."
 
-**Search**
-> "Find all emails about the Q2 report from the last 30 days."
+### Search
 
-> "Search for any flagged emails in my Sent folder."
+- "Find all emails about the Q2 report from the last 30 days."
+- "Search for any flagged emails in my Sent folder."
 
-**Send & reply**
-> "Send an email to bob@example.com letting him know the meeting is moved to Thursday at 3pm."
+### Send & reply
 
-> "Reply to the last email from the design team and ask for the updated mockups."
+- "Send an email to bob letting him know the meeting is moved to Thursday at 3pm."
+- "Reply to the last email from the design team and ask for the updated mockups."
 
-**Organize**
-> "Move all newsletters from my inbox to the Newsletters folder."
+### Organize
 
-> "Flag the three most recent emails from my manager."
+- "Move all newsletters from my inbox to the Newsletters folder."
+- "Flag the three most recent emails from my manager."
+- "Delete all emails in the Spam folder."
 
-> "Delete all emails in the Spam folder."
+### Status
 
-**Status**
-> "Check if Proton Bridge is connected."
+- "Check if Proton Bridge is connected."
 
 ## Development
 

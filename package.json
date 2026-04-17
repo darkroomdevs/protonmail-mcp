@@ -1,6 +1,6 @@
 {
   "name": "@darkroomhq/protonmail-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for ProtonMail via Proton Bridge (SMTP + IMAP)",
   "type": "module",
   "license": "MIT",
