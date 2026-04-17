@@ -1,0 +1,29 @@
+{
+  "name": "protonmail-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for ProtonMail via Proton Bridge (SMTP + IMAP)",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["mcp", "protonmail", "email", "proton-bridge", "imap", "smtp"],
+  "engines": { "node": ">=18.0.0" },
+  "files": ["build/", "README.md", "LICENSE"],
+  "bin": { "protonmail-mcp": "./build/index.js" },
+  "scripts": {
+    "build": "tsc && chmod 755 build/index.js",
+    "dev": "tsc --watch",
+    "start": "node build/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "nodemailer": "^6.9.0",
+    "imapflow": "^1.0.0",
+    "mailparser": "^3.7.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^6.4.0"
+  }
+}
